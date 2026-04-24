@@ -19,7 +19,16 @@
       <nav class="nav">
         <a href="{{ url_for('index') }}" class="nav-link">Menu de Compra</a>
         <a href="{{ url_for('novo_pedido') }}" class="nav-link">Novo Pedido</a>
-        <a href="{{ url_for('listar_pedidos') }}" class="nav-link">Histórico</a>
+        {% if admin_logado %}
+          <a href="{{ url_for('listar_pedidos') }}" class="nav-link">Histórico</a>
+          <span class="nav-divider">|</span>
+          <span class="nav-admin-info">👤 {{ admin_logado }}</span>
+          <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
+            <button type="submit" class="nav-logout-btn">Sair</button>
+          </form>
+        {% else %}
+          <a href="{{ url_for('login') }}" class="nav-link nav-admin-link">🔐 Admin</a>
+        {% endif %}
       </nav>
     </div>
   </header>
@@ -40,7 +49,7 @@
 
   <footer class="footer">
     <div class="container">
-      <p>Agrishow Machine Control · {{ ''|string }}</p>
+      <p>Agrishow Machine Control</p>
     </div>
   </footer>
   {% block scripts %}{% endblock %}
