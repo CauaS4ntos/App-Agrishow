@@ -142,12 +142,17 @@ def index():
 
     linhas = []
     for m in maquinas:
+        d15 = estoque_disponivel(conn, m['sap'], 15)
+        d30 = estoque_disponivel(conn, m['sap'], 30)
+        d60 = estoque_disponivel(conn, m['sap'], 60)
+
         linhas.append({
             'modelo': m['modelo'],
             'sap': m['sap'],
-            'd15': estoque_disponivel(conn, m['sap'], 15),
-            'd30': estoque_disponivel(conn, m['sap'], 30),
-            'd60': estoque_disponivel(conn, m['sap'], 60),
+            'd15': d15,
+            'd30': d30,
+            'd60': d60,
+            'total': d15 + d30 + d60
         })
 
     dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
