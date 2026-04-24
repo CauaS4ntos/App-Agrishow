@@ -1,4 +1,3 @@
-```python
 import os
 import sqlite3
 import random
@@ -268,4 +267,3 @@ def download(filename):
 # ================= RUN =================
 if __name__ == '__main__':
     app.run(debug=True)
-```
