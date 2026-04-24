@@ -41,14 +41,7 @@ def get_admin_password():
 def verificar_credenciais(email, senha):
     email = (email or '').lower().strip()
     senha = senha or ''
-
-    return (
-        email in get_admin_emails()
-        and senha == get_admin_password()
-    )
-
-def admin_emails():
-    return get_admin_emails()
+    return email in get_admin_emails() and senha == get_admin_password()
 
 def admin_required(f):
     @wraps(f)
@@ -117,41 +110,27 @@ def inject_admin():
 @app.route('/')
 def index():
     conn = db()
-    maquinas_raw = conn.execute("SELECT modelo, sap FROM maquinas").fetchall()
-
-maquinas = []
-for m in maquinas_raw:
-    d15 = estoque_disponivel(conn, m['sap'], 15)
-    d30 = estoque_disponivel(conn, m['sap'], 30)
-    d60 = estoque_disponivel(conn, m['sap'], 60)
-
-    maquinas.append({
-        'modelo': m['modelo'],
-        'sap': m['sap'],
-        'd15': d15,
-        'd30': d30,
-        'd60': d60,
-    })
+    maquinas = conn.execute("SELECT modelo, sap FROM maquinas").fetchall()
 
     linhas = []
     for m in maquinas:
-        d15 = estoque_disponivel(conn,m['sap'],15)
-        d30 = estoque_disponivel(conn,m['sap'],30)
-        d60 = estoque_disponivel(conn,m['sap'],60)
+        d15 = estoque_disponivel(conn, m['sap'], 15)
+        d30 = estoque_disponivel(conn, m['sap'], 30)
+        d60 = estoque_disponivel(conn, m['sap'], 60)
 
         linhas.append({
-            'modelo':m['modelo'],
-            'sap':m['sap'],
-            'd15':d15,
-            'd30':d30,
-            'd60':d60,
-            'total':d15+d30+d60
+            'modelo': m['modelo'],
+            'sap': m['sap'],
+            'd15': d15,
+            'd30': d30,
+            'd60': d60,
+            'total': d15 + d30 + d60
         })
 
     dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
     conn.close()
 
-    return render_template('index.html',linhas=linhas,dealers=dealers)
+    return render_template('index.html', linhas=linhas, dealers=dealers)
 
 # ---------------- API ----------------
 @app.route('/api/estoque')
@@ -159,9 +138,11 @@ def api_estoque():
     sap = request.args.get('sap')
     conn = db()
     resp = {
-        '15':estoque_disponivel(conn,sap,15),
-        '30':estoque_disponivel(conn,sap,30),
-        '60':estoque_disponivel(conn,sap,60),
+        'disponivel': {
+            '15': estoque_disponivel(conn, sap, 15),
+            '30': estoque_disponivel(conn, sap, 30),
+            '60': estoque_disponivel(conn, sap, 60),
+        }
     }
     conn.close()
     return jsonify(resp)
@@ -170,10 +151,21 @@ def api_estoque():
 @app.route('/pedido/novo', methods=['GET','POST'])
 def novo_pedido():
     conn = db()
-    dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
-    maquinas = conn.execute("SELECT modelo,sap FROM maquinas").fetchall()
 
-    if request.method=='POST':
+    dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
+    maquinas_raw = conn.execute("SELECT modelo, sap FROM maquinas").fetchall()
+
+    maquinas = []
+    for m in maquinas_raw:
+        maquinas.append({
+            'modelo': m['modelo'],
+            'sap': m['sap'],
+            'd15': estoque_disponivel(conn, m['sap'], 15),
+            'd30': estoque_disponivel(conn, m['sap'], 30),
+            'd60': estoque_disponivel(conn, m['sap'], 60),
+        })
+
+    if request.method == 'POST':
         dealer = request.form.get('dealer')
         funcionario = request.form.get('funcionario')
         sap = request.form.get('sap')
@@ -181,26 +173,29 @@ def novo_pedido():
         prazo = int(request.form.get('prazo'))
         file = request.files.get('assinatura')
 
-        if not allowed_file(file.filename):
+        if not file or not allowed_file(file.filename):
             flash('Arquivo inválido','error')
             return redirect(url_for('novo_pedido'))
 
         id_pedido = gerar_id_pedido()
-        filename = secure_filename(f"{id_pedido}.png")
-        file.save(os.path.join(UPLOAD_DIR,filename))
+        ext = file.filename.rsplit('.',1)[1].lower()
+        filename = secure_filename(f"{id_pedido}.{ext}")
+        file.save(os.path.join(UPLOAD_DIR, filename))
 
         conn.execute("""
             INSERT INTO pedidos
             (id,data_hora,dealer,funcionario,modelo,sap,quantidade,prazo,anexo_filename,status)
             VALUES (?,?,?,?,?,?,?,?,?,'ACEITO')
-        """,(id_pedido,datetime.now(),dealer,funcionario,modelo_por_sap(conn,sap),sap,quantidade,prazo,filename))
-        conn.commit()
+        """,(id_pedido, datetime.now(), dealer, funcionario,
+             modelo_por_sap(conn, sap), sap, quantidade, prazo, filename))
 
+        conn.commit()
         conn.close()
+
         return redirect(url_for('sucesso', id_pedido=id_pedido))
 
     conn.close()
-    return render_template('novo_pedido.html',dealers=dealers,maquinas=maquinas)
+    return render_template('novo_pedido.html', dealers=dealers, maquinas=maquinas)
 
 # ---------------- SUCESSO ----------------
 @app.route('/pedido/sucesso/<id_pedido>')
@@ -210,7 +205,7 @@ def sucesso(id_pedido):
     conn.close()
     if not p:
         abort(404)
-    return render_template('sucesso.html',pedido=p)
+    return render_template('sucesso.html', pedido=p)
 
 # ---------------- LOGIN ----------------
 @app.route('/login', methods=['GET','POST'])
@@ -248,12 +243,12 @@ def listar_pedidos():
     conn = db()
     pedidos = conn.execute("SELECT * FROM pedidos ORDER BY data_hora DESC").fetchall()
     conn.close()
-    return render_template('pedidos.html',pedidos=pedidos)
+    return render_template('pedidos.html', pedidos=pedidos)
 
 @app.route('/uploads/<path:filename>')
 @admin_required
 def download(filename):
-    return send_from_directory(UPLOAD_DIR,filename)
+    return send_from_directory(UPLOAD_DIR, filename)
 
 # ---------------- RUN ----------------
 if __name__ == '__main__':
