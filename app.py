@@ -134,7 +134,6 @@ def index():
     dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
 
     conn.close()
-
     return render_template('index.html', linhas=linhas, dealers=dealers)
 
 # ---------------- API ----------------
@@ -175,17 +174,7 @@ def novo_pedido():
     conn = db()
 
     dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
-    maquinas_raw = conn.execute("SELECT modelo, sap FROM maquinas").fetchall()
-
-    maquinas = []
-    for m in maquinas_raw:
-        maquinas.append({
-            'modelo': m['modelo'],
-            'sap': m['sap'],
-            'd15': estoque_disponivel(conn, m['sap'], 15),
-            'd30': estoque_disponivel(conn, m['sap'], 30),
-            'd60': estoque_disponivel(conn, m['sap'], 60),
-        })
+    maquinas = conn.execute("SELECT modelo, sap FROM maquinas").fetchall()
 
     if request.method == 'POST':
         dealer = request.form.get('dealer')
@@ -270,6 +259,38 @@ def logout():
     session.clear()
     return redirect(url_for('index'))
 
+# ---------------- CANCELAR PEDIDO ----------------
+@app.route('/pedido/cancelar/<id_pedido>', methods=['POST'])
+@admin_required
+def cancelar_pedido(id_pedido):
+    conn = db()
+
+    pedido = conn.execute(
+        "SELECT * FROM pedidos WHERE id = ?",
+        (id_pedido,)
+    ).fetchone()
+
+    if not pedido:
+        conn.close()
+        abort(404)
+
+    if pedido['status'] == 'CANCELADO':
+        conn.close()
+        flash('Pedido já cancelado', 'error')
+        return redirect(url_for('listar_pedidos'))
+
+    conn.execute("""
+        UPDATE pedidos
+        SET status = 'CANCELADO'
+        WHERE id = ?
+    """, (id_pedido,))
+
+    conn.commit()
+    conn.close()
+
+    flash(f'Pedido {id_pedido} cancelado com sucesso', 'success')
+    return redirect(url_for('listar_pedidos'))
+
 # ---------------- ADMIN ----------------
 @app.route('/pedidos')
 @admin_required
@@ -279,6 +300,7 @@ def listar_pedidos():
     conn.close()
     return render_template('pedidos.html', pedidos=pedidos)
 
+# ---------------- DOWNLOAD ----------------
 @app.route('/uploads/<path:filename>')
 @admin_required
 def download(filename):
