@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}Novo Pedido - Agrishow{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div>
+    <h1>Novo Pedido</h1>
+    <p class="hero-sub">Preencha os dados e anexe a foto da assinatura para confirmar.</p>
+  </div>
+  <a href="{{ url_for('index') }}" class="btn btn-ghost">← Voltar</a>
+</section>
+
+<div class="card form-card">
+  <form method="POST" action="{{ url_for('novo_pedido') }}" enctype="multipart/form-data" id="form-pedido">
+    <div class="form-grid">
+      <div class="form-field">
+        <label for="dealer">Dealer <span class="req">*</span></label>
+        <select name="dealer" id="dealer" required>
+          <option value="">Selecione...</option>
+          {% for d in dealers %}
+            <option value="{{ d }}">{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label for="funcionario">Nome do Funcionário <span class="req">*</span></label>
+        <input type="text" name="funcionario" id="funcionario" required maxlength="80" />
+      </div>
+
+      <div class="form-field form-field-wide">
+        <label for="sap">Máquina (Modelo + Código SAP) <span class="req">*</span></label>
+        <select name="sap" id="sap" required>
+          <option value="">Selecione a máquina...</option>
+          {% for m in maquinas %}
+            <option value="{{ m.sap }}" data-modelo="{{ m.modelo }}">
+              {{ m.modelo }} — {{ m.sap }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label for="prazo">Prazo de Entrega <span class="req">*</span></label>
+        <select name="prazo" id="prazo" required>
+          <option value="">Selecione...</option>
+          <option value="15">15 dias</option>
+          <option value="30">30 dias</option>
+          <option value="60">60 dias</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label for="quantidade">Quantidade <span class="req">*</span></label>
+        <input type="number" name="quantidade" id="quantidade" min="1" value="1" required />
+      </div>
+    </div>
+
+    <div id="estoque-info" class="estoque-info hidden">
+      <div class="estoque-titulo">Estoque disponível para <span id="ei-modelo">—</span></div>
+      <div class="estoque-bars">
+        <div class="estoque-bar" data-prazo="15">
+          <span class="ei-label">15 dias</span>
+          <span class="ei-value" id="ei-15">—</span>
+        </div>
+        <div class="estoque-bar" data-prazo="30">
+          <span class="ei-label">30 dias</span>
+          <span class="ei-value" id="ei-30">—</span>
+        </div>
+        <div class="estoque-bar" data-prazo="60">
+          <span class="ei-label">60 dias</span>
+          <span class="ei-value" id="ei-60">—</span>
+        </div>
+      </div>
+      <div class="estoque-status" id="ei-status"></div>
+    </div>
+
+    <div class="form-field form-field-wide">
+      <label for="assinatura">Foto da Assinatura (anexo obrigatório) <span class="req">*</span></label>
+      <div class="file-drop" id="file-drop">
+        <input type="file" name="assinatura" id="assinatura" accept=".png,.jpg,.jpeg,.pdf,.gif,.bmp,.webp" required />
+        <div class="file-drop-text">
+          <div class="file-icon">📎</div>
+          <div><strong>Clique para selecionar</strong> ou arraste a foto aqui</div>
+          <div class="file-hint">PNG, JPG, PDF — máx 10MB</div>
+        </div>
+        <div class="file-selected hidden" id="file-selected"></div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <a href="{{ url_for('index') }}" class="btn btn-ghost">Cancelar</a>
+      <button type="submit" class="btn btn-primary btn-lg" id="btn-enviar">Enviar Pedido</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const sapSel = document.getElementById('sap');
+  const prazoSel = document.getElementById('prazo');
+  const qtdInput = document.getElementById('quantidade');
+  const info = document.getElementById('estoque-info');
+  const eiModelo = document.getElementById('ei-modelo');
+  const ei15 = document.getElementById('ei-15');
+  const ei30 = document.getElementById('ei-30');
+  const ei60 = document.getElementById('ei-60');
+  const eiStatus = document.getElementById('ei-status');
+  const btnEnviar = document.getElementById('btn-enviar');
+
+  let estoqueAtual = {};
+
+  async function carregarEstoque() {
+    const sap = sapSel.value;
+    if (!sap) { info.classList.add('hidden'); return; }
+    const resp = await fetch(`/api/estoque?sap=${encodeURIComponent(sap)}`);
+    if (!resp.ok) { info.classList.add('hidden'); return; }
+    const data = await resp.json();
+    estoqueAtual = data.disponivel;
+    eiModelo.textContent = `${data.modelo} (${data.sap})`;
+    ei15.textContent = data.disponivel['15'];
+    ei30.textContent = data.disponivel['30'];
+    ei60.textContent = data.disponivel['60'];
+    [ei15, ei30, ei60].forEach(e => {
+      const v = parseInt(e.textContent, 10);
+      e.classList.toggle('zero', v === 0);
+    });
+    info.classList.remove('hidden');
+    validarQuantidade();
+  }
+
+  function validarQuantidade() {
+    const prazo = prazoSel.value;
+    const qtd = parseInt(qtdInput.value, 10) || 0;
+    eiStatus.className = 'estoque-status';
+    eiStatus.textContent = '';
+    btnEnviar.disabled = false;
+    if (!prazo || !Object.keys(estoqueAtual).length) return;
+    const disp = estoqueAtual[prazo];
+    if (qtd <= 0) return;
+    if (qtd > disp) {
+      eiStatus.textContent = `⛔ Quantidade excede o estoque disponível em ${prazo} dias (${disp} unidade(s)).`;
+      eiStatus.classList.add('status-erro');
+      btnEnviar.disabled = true;
+    } else {
+      eiStatus.textContent = `✓ Disponível para entrega em ${prazo} dias. Estoque suficiente.`;
+      eiStatus.classList.add('status-ok');
+    }
+  }
+
+  sapSel.addEventListener('change', carregarEstoque);
+  prazoSel.addEventListener('change', validarQuantidade);
+  qtdInput.addEventListener('input', validarQuantidade);
+
+  // Pre-seleção via query string ?sap=...
+  const params = new URLSearchParams(window.location.search);
+  const sapPre = params.get('sap');
+  if (sapPre) {
+    sapSel.value = sapPre;
+    carregarEstoque();
+  }
+
+  // Upload feedback visual
+  const fileInput = document.getElementById('assinatura');
+  const fileSelected = document.getElementById('file-selected');
+  const fileDrop = document.getElementById('file-drop');
+  fileInput.addEventListener('change', e => {
+    if (e.target.files.length > 0) {
+      const f = e.target.files[0];
+      fileSelected.textContent = `✓ ${f.name} (${(f.size / 1024).toFixed(1)} KB)`;
+      fileSelected.classList.remove('hidden');
+      fileDrop.classList.add('has-file');
+    }
+  });
+
+  // Drag and drop
+  ['dragover', 'dragenter'].forEach(ev =>
+    fileDrop.addEventListener(ev, e => { e.preventDefault(); fileDrop.classList.add('dragging'); })
+  );
+  ['dragleave', 'drop'].forEach(ev =>
+    fileDrop.addEventListener(ev, e => { e.preventDefault(); fileDrop.classList.remove('dragging'); })
+  );
+  fileDrop.addEventListener('drop', e => {
+    if (e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      fileInput.dispatchEvent(new Event('change'));
+    }
+  });
+</script>
+{% endblock %}

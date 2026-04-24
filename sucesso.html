@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Pedido Aceito - Agrishow{% endblock %}
+
+{% block content %}
+<div class="sucesso-card">
+  <div class="sucesso-icon">✓</div>
+  <h1>Pedido Aceito!</h1>
+  <p class="sucesso-sub">Seu pedido foi registrado com sucesso no sistema.</p>
+
+  <div class="sucesso-id">
+    <div class="sucesso-id-label">ID do Pedido</div>
+    <div class="sucesso-id-value">{{ pedido.id }}</div>
+  </div>
+
+  <div class="sucesso-detalhes">
+    <div class="det-row"><span class="det-label">Data/Hora</span><span>{{ pedido.data_hora.replace('T', ' ') }}</span></div>
+    <div class="det-row"><span class="det-label">Dealer</span><span>{{ pedido.dealer }}</span></div>
+    <div class="det-row"><span class="det-label">Funcionário</span><span>{{ pedido.funcionario }}</span></div>
+    <div class="det-row"><span class="det-label">Máquina</span><span>{{ pedido.modelo }} — {{ pedido.sap }}</span></div>
+    <div class="det-row"><span class="det-label">Quantidade</span><span>{{ pedido.quantidade }}</span></div>
+    <div class="det-row"><span class="det-label">Prazo</span><span>{{ pedido.prazo }} dias</span></div>
+    <div class="det-row"><span class="det-label">Assinatura</span>
+      <a href="{{ url_for('download_anexo', filename=pedido.anexo_filename) }}" target="_blank">📎 Ver anexo</a>
+    </div>
+  </div>
+
+  <div class="sucesso-actions">
+    <a href="{{ url_for('index') }}" class="btn btn-ghost">Voltar ao Menu</a>
+    <a href="{{ url_for('novo_pedido') }}" class="btn btn-primary">Novo Pedido</a>
+    <a href="{{ url_for('listar_pedidos') }}" class="btn btn-ghost">Ver Histórico</a>
+  </div>
+</div>
+{% endblock %}

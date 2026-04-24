@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Menu de Compra - Agrishow{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div>
+    <h1>Menu de Compra</h1>
+    <p class="hero-sub">Disponibilidade de máquinas em tempo real por prazo de entrega.</p>
+  </div>
+  <a href="{{ url_for('novo_pedido') }}" class="btn btn-primary btn-lg">+ Novo Pedido</a>
+</section>
+
+<div class="stats">
+  <div class="stat-card stat-15">
+    <div class="stat-label">Disponíveis em 15 dias</div>
+    <div class="stat-value">{{ total_15 }}</div>
+  </div>
+  <div class="stat-card stat-30">
+    <div class="stat-label">Disponíveis em 30 dias</div>
+    <div class="stat-value">{{ total_30 }}</div>
+  </div>
+  <div class="stat-card stat-60">
+    <div class="stat-label">Disponíveis em 60 dias</div>
+    <div class="stat-value">{{ total_60 }}</div>
+  </div>
+  <div class="stat-card stat-total">
+    <div class="stat-label">Total em estoque</div>
+    <div class="stat-value">{{ total_geral }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Estoque por Máquina</h2>
+    <input type="search" id="filtro" placeholder="🔍 Filtrar por modelo ou SAP..." class="input-search" />
+  </div>
+  <div class="table-wrap">
+    <table class="tabela" id="tabela-estoque">
+      <thead>
+        <tr>
+          <th>Modelo</th>
+          <th>Código SAP</th>
+          <th class="center">15 dias</th>
+          <th class="center">30 dias</th>
+          <th class="center">60 dias</th>
+          <th class="center">Total</th>
+          <th class="center">Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in linhas %}
+        <tr>
+          <td><strong>{{ l.modelo }}</strong></td>
+          <td class="mono">{{ l.sap }}</td>
+          <td class="center"><span class="pill {{ 'pill-zero' if l.d15 == 0 else 'pill-ok' }}">{{ l.d15 }}</span></td>
+          <td class="center"><span class="pill {{ 'pill-zero' if l.d30 == 0 else 'pill-ok' }}">{{ l.d30 }}</span></td>
+          <td class="center"><span class="pill {{ 'pill-zero' if l.d60 == 0 else 'pill-ok' }}">{{ l.d60 }}</span></td>
+          <td class="center"><strong>{{ l.total }}</strong></td>
+          <td class="center">
+            {% if l.total > 0 %}
+              <a href="{{ url_for('novo_pedido') }}?sap={{ l.sap }}" class="btn btn-sm btn-primary">Comprar</a>
+            {% else %}
+              <span class="badge-out">Sem estoque</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Filtro instantâneo na tabela
+  const filtro = document.getElementById('filtro');
+  const rows = document.querySelectorAll('#tabela-estoque tbody tr');
+  filtro.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    rows.forEach(r => {
+      const txt = r.textContent.toLowerCase();
+      r.style.display = txt.includes(q) ? '' : 'none';
+    });
+  });
+</script>
+{% endblock %}
