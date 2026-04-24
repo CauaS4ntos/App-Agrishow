@@ -201,6 +201,29 @@ def sucesso(id_pedido):
 
 @app.route('/pedidos')
 def listar_pedidos():
+  @app.route('/pedido/cancelar/<id_pedido>')
+def cancelar_pedido(id_pedido):
+    conn = db()
+ 
+    # Verifica se o pedido existe
+    pedido = conn.execute("SELECT * FROM pedidos WHERE id = ?", (id_pedido,)).fetchone()
+ 
+    if pedido is None:
+        conn.close()
+        abort(404)
+ 
+    # Atualiza status para CANCELADO
+    conn.execute("""
+        UPDATE pedidos
+        SET status = 'CANCELADO'
+        WHERE id = ?
+    """, (id_pedido,))
+ 
+    conn.commit()
+    conn.close()
+ 
+    flash('Pedido cancelado com sucesso.', 'success')
+    return redirect(url_for('listar_pedidos'))
     conn = db()
     pedidos = conn.execute("SELECT * FROM pedidos ORDER BY data_hora DESC").fetchall()
     conn.close()
