@@ -5,14 +5,12 @@ import time
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import (
-    Flask, render_template, request, jsonify, session, send_from_directory, redirect, url_for, flash
+    Flask, render_template, request, jsonify, session,
+    send_from_directory, redirect, url_for, flash
 )
 from werkzeug.utils import secure_filename
 
-# 🔴 EMAIL
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
-
+# ================= CONFIG =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'data', 'agrishow.db')
 UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads')
@@ -29,59 +27,12 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=SESSION_HOURS)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
-# 🔴 CRIA BANCO APENAS SE NÃO EXISTIR
+# cria banco apenas se não existir
 if not os.path.exists(DB_PATH):
     import init_db
     init_db.main()
 
-# ---------------- EMAIL ----------------
-def enviar_email(assunto, conteudo):
-    try:
-        api_key = os.environ.get("SENDGRID_API_KEY")
-        remetente = os.environ.get("EMAIL_FROM")
-        destinatarios = get_admin_emails()
-
-        if not api_key or not remetente or not destinatarios:
-            print("⚠️ Email não configurado")
-            return
-
-        message = Mail(
-            from_email=remetente,
-            to_emails=destinatarios,
-            subject=assunto,
-            html_content=conteudo
-        )
-
-        sg = SendGridAPIClient(api_key)
-        sg.send(message)
-
-    except Exception as e:
-        print("Erro ao enviar email:", e)
-
-# ---------------- ADMINS ----------------
-def get_admin_emails():
-    raw = os.environ.get('ADMIN_EMAILS', '')
-    return [e.strip().lower() for e in raw.split(',') if e.strip()]
-
-
-def get_admin_password():
-    return os.environ.get('ADMIN_PASSWORD', '')
-
-
-def verificar_credenciais(email, senha):
-    return (email or '').lower().strip() in get_admin_emails() and senha == get_admin_password()
-
-
-def admin_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not session.get('admin_email'):
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-
-    return decorated
-
-# ---------------- DB ----------------
+# ================= DB =================
 def db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -89,11 +40,16 @@ def db():
 
 
 def estoque_disponivel(conn, sap, prazo):
-    col = {15: 'estoque_inicial_15', 30: 'estoque_inicial_30', 60: 'estoque_inicial_60'}.get(prazo)
+    col = {
+        15: 'estoque_inicial_15',
+        30: 'estoque_inicial_30',
+        60: 'estoque_inicial_60'
+    }.get(prazo)
+
     if not col:
         return 0
 
-    row = conn.execute(f"SELECT {col} FROM maquinas WHERE sap = ?", (sap,)).fetchone()
+    row = conn.execute(f"SELECT {col} FROM maquinas WHERE sap=?", (sap,)).fetchone()
     if not row:
         return 0
 
@@ -120,80 +76,86 @@ def gerar_id_pedido():
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXT
 
-# ---------------- API ESTOQUE (NOVO) ----------------
+# ================= AUTH =================
+def get_admin_emails():
+    raw = os.environ.get('ADMIN_EMAILS', '')
+    return [e.strip().lower() for e in raw.split(',') if e.strip()]
+
+
+def get_admin_password():
+    return os.environ.get('ADMIN_PASSWORD', '')
+
+
+def verificar_credenciais(email, senha):
+    return (email or '').lower().strip() in get_admin_emails() and senha == get_admin_password()
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('admin_email'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+# ================= API =================
 @app.route('/api/estoque')
 def api_estoque():
-    sap = request.args.get('sap')
+    try:
+        sap = request.args.get('sap')
 
-    if not sap:
-        return jsonify({'error': 'sap obrigatório'}), 400
+        if not sap:
+            return jsonify({'error': 'sap obrigatório'}), 400
 
-    conn = db()
+        conn = db()
 
-    maquina = conn.execute(
-        "SELECT modelo FROM maquinas WHERE sap = ?",
-        (sap,)
-    ).fetchone()
+        maquina = conn.execute(
+            "SELECT modelo FROM maquinas WHERE sap=?",
+            (sap,)
+        ).fetchone()
 
-    if not maquina:
-        conn.close()
-        return jsonify({'error': 'SAP não encontrado'}), 404
+        if not maquina:
+            conn.close()
+            return jsonify({'error': 'SAP não encontrado'}), 404
 
-    resp = {
-        'modelo': maquina['modelo'],
-        'sap': sap,
-        'disponivel': {
-            '15': estoque_disponivel(conn, sap, 15),
-            '30': estoque_disponivel(conn, sap, 30),
-            '60': estoque_disponivel(conn, sap, 60),
+        resp = {
+            'modelo': maquina['modelo'],
+            'sap': sap,
+            'disponivel': {
+                '15': estoque_disponivel(conn, sap, 15),
+                '30': estoque_disponivel(conn, sap, 30),
+                '60': estoque_disponivel(conn, sap, 60),
+            }
         }
-    }
 
-    conn.close()
-    return jsonify(resp)
+        conn.close()
+        return jsonify(resp)
 
-# ---------------- HOME ----------------
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ================= ROTAS =================
 @app.route('/')
 def index():
     conn = db()
     maquinas = conn.execute("SELECT modelo, sap FROM maquinas").fetchall()
 
     linhas = []
-    total_15 = total_30 = total_60 = 0
-
     for m in maquinas:
-        d15 = estoque_disponivel(conn, m['sap'], 15)
-        d30 = estoque_disponivel(conn, m['sap'], 30)
-        d60 = estoque_disponivel(conn, m['sap'], 60)
-
-        total_15 += d15
-        total_30 += d30
-        total_60 += d60
-
         linhas.append({
             'modelo': m['modelo'],
             'sap': m['sap'],
-            'd15': d15,
-            'd30': d30,
-            'd60': d60,
-            'total': d15 + d30 + d60
+            'd15': estoque_disponivel(conn, m['sap'], 15),
+            'd30': estoque_disponivel(conn, m['sap'], 30),
+            'd60': estoque_disponivel(conn, m['sap'], 60),
         })
 
     dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
-
     conn.close()
 
-    return render_template(
-        'index.html',
-        linhas=linhas,
-        dealers=dealers,
-        total_15=total_15,
-        total_30=total_30,
-        total_60=total_60,
-        total_geral=total_15 + total_30 + total_60
-    )
+    return render_template('index.html', linhas=linhas, dealers=dealers)
 
-# ---------------- NOVO PEDIDO ----------------
+
 @app.route('/pedido/novo', methods=['GET', 'POST'])
 def novo_pedido():
     conn = db()
@@ -202,56 +164,93 @@ def novo_pedido():
     maquinas = conn.execute("SELECT modelo, sap FROM maquinas").fetchall()
 
     if request.method == 'POST':
-        dealer = request.form.get('dealer')
-        funcionario = request.form.get('funcionario')
-        sap = request.form.get('sap')
-        quantidade = int(request.form.get('quantidade') or 0)
-        prazo = int(request.form.get('prazo') or 0)
+        try:
+            dealer = request.form.get('dealer')
+            funcionario = request.form.get('funcionario')
+            sap = request.form.get('sap')
+            quantidade = int(request.form.get('quantidade') or 0)
+            prazo = int(request.form.get('prazo') or 0)
 
-        if quantidade > estoque_disponivel(conn, sap, prazo):
-            flash('Estoque insuficiente', 'error')
+            if quantidade > estoque_disponivel(conn, sap, prazo):
+                flash('Estoque insuficiente', 'error')
+                return redirect(url_for('novo_pedido'))
+
+            file = request.files.get('assinatura')
+            if not file or not allowed_file(file.filename):
+                flash('Arquivo inválido', 'error')
+                return redirect(url_for('novo_pedido'))
+
+            id_pedido = gerar_id_pedido()
+            ext = file.filename.rsplit('.', 1)[1].lower()
+            filename = secure_filename(f"{id_pedido}.{ext}")
+            file.save(os.path.join(UPLOAD_DIR, filename))
+
+            conn.execute("""
+                INSERT INTO pedidos
+                (id,data_hora,dealer,funcionario,modelo,sap,quantidade,prazo,anexo_filename,status)
+                VALUES (?,?,?,?,?,?,?,?,?,'ACEITO')
+            """, (
+                id_pedido,
+                datetime.now().isoformat(),
+                dealer,
+                funcionario,
+                modelo_por_sap(conn, sap),
+                sap,
+                quantidade,
+                prazo,
+                filename
+            ))
+
+            conn.commit()
+            conn.close()
+
+            return redirect(url_for('index'))
+
+        except Exception as e:
+            conn.close()
+            flash(f'Erro: {e}', 'error')
             return redirect(url_for('novo_pedido'))
-
-        file = request.files.get('assinatura')
-        if not file or not allowed_file(file.filename):
-            flash('Arquivo inválido', 'error')
-            return redirect(url_for('novo_pedido'))
-
-        id_pedido = gerar_id_pedido()
-        ext = file.filename.rsplit('.', 1)[1].lower()
-        filename = secure_filename(f"{id_pedido}.{ext}")
-
-        file.save(os.path.join(UPLOAD_DIR, filename))
-
-        conn.execute("""
-            INSERT INTO pedidos
-            (id,data_hora,dealer,funcionario,modelo,sap,quantidade,prazo,anexo_filename,status)
-            VALUES (?,?,?,?,?,?,?,?,?,'ACEITO')
-        """, (
-            id_pedido,
-            datetime.now().isoformat(),
-            dealer,
-            funcionario,
-            modelo_por_sap(conn, sap),
-            sap,
-            quantidade,
-            prazo,
-            filename
-        ))
-
-        conn.commit()
-        conn.close()
-
-        enviar_email(
-            "Novo Pedido Criado",
-            f"<b>Pedido:</b> {id_pedido}<br>Dealer: {dealer}<br>Qtd: {quantidade}"
-        )
-
-        return redirect(url_for('sucesso', id_pedido=id_pedido))
 
     conn.close()
     return render_template('novo_pedido.html', dealers=dealers, maquinas=maquinas)
 
-# ---------------- RUN ----------------
+
+@app.route('/pedidos')
+@admin_required
+def listar_pedidos():
+    conn = db()
+    pedidos = conn.execute("SELECT * FROM pedidos ORDER BY data_hora DESC").fetchall()
+    conn.close()
+    return render_template('pedidos.html', pedidos=pedidos)
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        senha = request.form.get('senha')
+
+        if verificar_credenciais(email, senha):
+            session['admin_email'] = email
+            return redirect(url_for('listar_pedidos'))
+
+        flash('Login inválido', 'error')
+
+    return render_template('login.html')
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return redirect(url_for('index'))
+
+
+@app.route('/uploads/<path:filename>')
+@admin_required
+def download(filename):
+    return send_from_directory(UPLOAD_DIR, filename)
+
+
+# ================= RUN =================
 if __name__ == '__main__':
     app.run(debug=True)
