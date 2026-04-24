@@ -111,24 +111,48 @@
 
   let estoqueAtual = {};
 
-  async function carregarEstoque() {
-    const sap = sapSel.value;
-    if (!sap) { info.classList.add('hidden'); return; }
+async function carregarEstoque() {
+  const sap = sapSel.value;
+
+  if (!sap) {
+    info.classList.add('hidden');
+    return;
+  }
+
+  try {
     const resp = await fetch(`/api/estoque?sap=${encodeURIComponent(sap)}`);
-    if (!resp.ok) { info.classList.add('hidden'); return; }
+
+    if (!resp.ok) {
+      console.error("Erro API:", resp.status);
+      info.classList.add('hidden');
+      return;
+    }
+
     const data = await resp.json();
-    estoqueAtual = data.disponivel;
-    eiModelo.textContent = `${data.modelo} (${data.sap})`;
-    ei15.textContent = data.disponivel['15'];
-    ei30.textContent = data.disponivel['30'];
-    ei60.textContent = data.disponivel['60'];
+    console.log("API retorno:", data); // 🔥 debug essencial
+
+    // 🔴 PROTEÇÃO
+    estoqueAtual = data.disponivel || {};
+
+    eiModelo.textContent = `${data.modelo || '—'} (${data.sap || ''})`;
+
+    ei15.textContent = estoqueAtual['15'] ?? 0;
+    ei30.textContent = estoqueAtual['30'] ?? 0;
+    ei60.textContent = estoqueAtual['60'] ?? 0;
+
     [ei15, ei30, ei60].forEach(e => {
-      const v = parseInt(e.textContent, 10);
+      const v = parseInt(e.textContent, 10) || 0;
       e.classList.toggle('zero', v === 0);
     });
+
     info.classList.remove('hidden');
     validarQuantidade();
+
+  } catch (err) {
+    console.error("Erro fetch:", err);
+    info.classList.add('hidden');
   }
+}
 
   function validarQuantidade() {
     const prazo = prazoSel.value;
