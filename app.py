@@ -37,9 +37,7 @@ def get_admin_password():
     return os.environ.get('ADMIN_PASSWORD', '')
 
 def verificar_credenciais(email, senha):
-    email = (email or '').lower().strip()
-    senha = senha or ''
-    return email in get_admin_emails() and senha == get_admin_password()
+    return (email or '').lower().strip() in get_admin_emails() and senha == get_admin_password()
 
 def admin_required(f):
     @wraps(f)
@@ -198,6 +196,11 @@ def novo_pedido():
             flash('Arquivo inválido', 'error')
             return redirect(url_for('novo_pedido'))
 
+        # 🔴 valida estoque
+        if quantidade > estoque_disponivel(conn, sap, prazo):
+            flash('Estoque insuficiente', 'error')
+            return redirect(url_for('novo_pedido'))
+
         id_pedido = gerar_id_pedido()
         ext = file.filename.rsplit('.',1)[1].lower()
         filename = secure_filename(f"{id_pedido}.{ext}")
@@ -207,8 +210,10 @@ def novo_pedido():
             INSERT INTO pedidos
             (id,data_hora,dealer,funcionario,modelo,sap,quantidade,prazo,anexo_filename,status)
             VALUES (?,?,?,?,?,?,?,?,?,'ACEITO')
-        """,(id_pedido, datetime.now(), dealer, funcionario,
-             modelo_por_sap(conn, sap), sap, quantidade, prazo, filename))
+        """,(id_pedido, datetime.now().isoformat(),
+             dealer, funcionario,
+             modelo_por_sap(conn, sap), sap,
+             quantidade, prazo, filename))
 
         conn.commit()
         conn.close()
@@ -259,16 +264,13 @@ def logout():
     session.clear()
     return redirect(url_for('index'))
 
-# ---------------- CANCELAR PEDIDO ----------------
+# ---------------- CANCELAR ----------------
 @app.route('/pedido/cancelar/<id_pedido>', methods=['POST'])
 @admin_required
 def cancelar_pedido(id_pedido):
     conn = db()
 
-    pedido = conn.execute(
-        "SELECT * FROM pedidos WHERE id = ?",
-        (id_pedido,)
-    ).fetchone()
+    pedido = conn.execute("SELECT * FROM pedidos WHERE id=?", (id_pedido,)).fetchone()
 
     if not pedido:
         conn.close()
@@ -288,7 +290,7 @@ def cancelar_pedido(id_pedido):
     conn.commit()
     conn.close()
 
-    flash(f'Pedido {id_pedido} cancelado com sucesso', 'success')
+    flash(f'Pedido {id_pedido} cancelado', 'success')
     return redirect(url_for('listar_pedidos'))
 
 # ---------------- ADMIN ----------------
@@ -305,6 +307,14 @@ def listar_pedidos():
 @admin_required
 def download(filename):
     return send_from_directory(UPLOAD_DIR, filename)
+
+# ---------------- RELOAD DB ----------------
+@app.route('/admin/reload-db')
+@admin_required
+def reload_db():
+    import init_db
+    init_db.main()
+    return "Banco atualizado com sucesso"
 
 # ---------------- RUN ----------------
 if __name__ == '__main__':
