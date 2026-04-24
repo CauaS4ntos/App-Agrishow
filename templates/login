@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Login Admin - Agrishow{% endblock %}
+
+{% block content %}
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="login-icon">🔐</div>
+      <h1>Acesso Administrativo</h1>
+      <p class="login-sub">Entre com suas credenciais para acessar o histórico de pedidos.</p>
+    </div>
+
+    <form method="POST" action="{{ url_for('login') }}">
+      <div class="form-field">
+        <label for="email">Email</label>
+        <input type="email" name="email" id="email" required autofocus
+               placeholder="admin@agrishow.com" autocomplete="username" />
+      </div>
+      <div class="form-field">
+        <label for="senha">Senha</label>
+        <input type="password" name="senha" id="senha" required
+               autocomplete="current-password" />
+      </div>
+      <div class="form-actions-login">
+        <a href="{{ url_for('index') }}" class="btn btn-ghost">← Voltar</a>
+        <button type="submit" class="btn btn-primary btn-lg">Entrar</button>
+      </div>
+    </form>
+  </div>
+  <p class="login-footer">
+    Apenas administradores autorizados. Tentativas de acesso são monitoradas.
+  </p>
+</div>
+{% endblock %}
