@@ -24,7 +24,10 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=SESSION_HOURS)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
-if True:     if os.path.exists(DB_PATH):         os.remove(DB_PATH)      import init_db     init_db.main()
+if True:
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+
     import init_db
     init_db.main()
 
