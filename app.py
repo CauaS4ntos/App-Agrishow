@@ -1,7 +1,7 @@
+```python
 import os
 import sqlite3
 import random
-import time
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import (
@@ -38,7 +38,6 @@ def db():
     conn.row_factory = sqlite3.Row
     return conn
 
-
 def estoque_disponivel(conn, sap, prazo):
     col = {
         15: 'estoque_inicial_15',
@@ -63,15 +62,12 @@ def estoque_disponivel(conn, sap, prazo):
 
     return max(0, inicial - usado)
 
-
 def modelo_por_sap(conn, sap):
     r = conn.execute("SELECT modelo FROM maquinas WHERE sap=?", (sap,)).fetchone()
     return r['modelo'] if r else ''
 
-
 def gerar_id_pedido():
     return f"PED-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{random.randint(0,999):03d}"
-
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXT
@@ -81,14 +77,11 @@ def get_admin_emails():
     raw = os.environ.get('ADMIN_EMAILS', '')
     return [e.strip().lower() for e in raw.split(',') if e.strip()]
 
-
 def get_admin_password():
     return os.environ.get('ADMIN_PASSWORD', '')
 
-
 def verificar_credenciais(email, senha):
     return (email or '').lower().strip() in get_admin_emails() and senha == get_admin_password()
-
 
 def admin_required(f):
     @wraps(f)
@@ -134,17 +127,25 @@ def api_estoque():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ================= ROTAS =================
+# ================= HOME =================
 @app.route('/')
 def index():
     conn = db()
     maquinas = conn.execute("SELECT modelo, sap FROM maquinas").fetchall()
 
     linhas = []
+    total_15 = 0
+    total_30 = 0
+    total_60 = 0
+
     for m in maquinas:
         d15 = estoque_disponivel(conn, m['sap'], 15)
         d30 = estoque_disponivel(conn, m['sap'], 30)
         d60 = estoque_disponivel(conn, m['sap'], 60)
+
+        total_15 += d15
+        total_30 += d30
+        total_60 += d60
 
         linhas.append({
             'modelo': m['modelo'],
@@ -156,11 +157,20 @@ def index():
         })
 
     dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
+
     conn.close()
 
-    return render_template('index.html', linhas=linhas, dealers=dealers)
+    return render_template(
+        'index.html',
+        linhas=linhas,
+        dealers=dealers,
+        total_15=total_15,
+        total_30=total_30,
+        total_60=total_60,
+        total_geral=total_15 + total_30 + total_60
+    )
 
-
+# ================= NOVO PEDIDO =================
 @app.route('/pedido/novo', methods=['GET', 'POST'])
 def novo_pedido():
     conn = db()
@@ -219,7 +229,7 @@ def novo_pedido():
     conn.close()
     return render_template('novo_pedido.html', dealers=dealers, maquinas=maquinas)
 
-
+# ================= ADMIN =================
 @app.route('/pedidos')
 @admin_required
 def listar_pedidos():
@@ -228,7 +238,7 @@ def listar_pedidos():
     conn.close()
     return render_template('pedidos.html', pedidos=pedidos)
 
-
+# ================= LOGIN =================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -243,19 +253,19 @@ def login():
 
     return render_template('login.html')
 
-
+# ================= LOGOUT =================
 @app.route('/logout', methods=['POST'])
 def logout():
     session.clear()
     return redirect(url_for('index'))
 
-
+# ================= DOWNLOAD =================
 @app.route('/uploads/<path:filename>')
 @admin_required
 def download(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
-
 # ================= RUN =================
 if __name__ == '__main__':
     app.run(debug=True)
+```
