@@ -29,7 +29,7 @@
       </thead>
       <tbody>
         {% for p in pedidos %}
-        <tr>
+        <tr {% if p.status == 'CANCELADO' %}class="row-cancelado"{% endif %}>
           <td class="mono"><strong>{{ p.id }}</strong></td>
           <td>{{ p.data_hora.replace('T', ' ') }}</td>
           <td>{{ p.dealer }}</td>
@@ -37,19 +37,28 @@
           <td>{{ p.modelo }} <span class="muted mono">— {{ p.sap }}</span></td>
           <td class="center">{{ p.quantidade }}</td>
           <td class="center">{{ p.prazo }} d</td>
-          <td class="center"><a href="{{ url_for('download_anexo', filename=p.anexo_filename) }}" target="_blank">📎</a></td>
-          <td class="center"><span class="badge-ok">{{ p.status }}</span></td>
           <td class="center">
-    {% if p.status == 'ACEITO' %}
-<a href="{{ url_for('cancelar_pedido', id_pedido=p.id) }}"
-           onclick="return confirm('Tem certeza que deseja cancelar este pedido?');"
-           class="btn btn-danger">
-           Cancelar
-</a>
-    {% else %}
-<span class="badge-cancelado">Cancelado</span>
-    {% endif %}
-</td>
+            <a href="{{ url_for('download_anexo', filename=p.anexo_filename) }}" target="_blank">📎</a>
+          </td>
+          <td class="center">
+            {% if p.status == 'ACEITO' %}
+              <span class="badge-ok">ACEITO</span>
+            {% else %}
+              <span class="badge-cancelado">CANCELADO</span>
+            {% endif %}
+          </td>
+          <td class="center">
+            {% if p.status == 'ACEITO' %}
+              <form method="POST"
+                    action="{{ url_for('cancelar_pedido', id_pedido=p.id) }}"
+                    style="display:inline; margin:0;"
+                    onsubmit="return confirm('Tem certeza que deseja cancelar o pedido {{ p.id }}? Esta ação não pode ser desfeita.');">
+                <button type="submit" class="btn btn-sm btn-danger">Cancelar</button>
+              </form>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
         </tr>
         {% else %}
         <tr>
