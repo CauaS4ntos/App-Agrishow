@@ -1,11 +1,3 @@
-"""
-app.py - Agrishow Sistema de Pedidos v3 (REVISADO)
-- Login admin com emails via ENV
-- Senha unica via ENV
-- Rate limit de login
-- Notificacoes por email
-"""
-
 import os
 import sqlite3
 import random
@@ -47,14 +39,8 @@ def get_admin_password():
     return os.environ.get('ADMIN_PASSWORD', '')
 
 def verificar_credenciais(email, senha):
-    if not email or not senha:
-        return False
-
-    email = email.strip().lower()
-
-    # 🔒 restringe dominio (opcional)
-    if not email.endswith('@empresa.com'):
-        return False
+    email = (email or '').lower().strip()
+    senha = senha or ''
 
     return (
         email in get_admin_emails()
@@ -68,8 +54,7 @@ def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get('admin_email'):
-            flash('Acesso restrito. Faca login.', 'error')
-            return redirect(url_for('login', next=request.path))
+            return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated
 
@@ -80,9 +65,7 @@ LOCK_SECONDS = 300
 
 def _cliente_ip():
     xff = request.headers.get('X-Forwarded-For')
-    if xff:
-        return xff.split(',')[0].strip()
-    return request.remote_addr or 'unknown'
+    return xff.split(',')[0].strip() if xff else request.remote_addr
 
 def login_bloqueado(ip):
     agora = time.time()
@@ -102,110 +85,161 @@ def db():
     return conn
 
 def estoque_disponivel(conn, sap, prazo):
-    col = {15: 'estoque_inicial_15', 30: 'estoque_inicial_30', 60: 'estoque_inicial_60'}.get(prazo)
-    if col is None:
+    col = {15:'estoque_inicial_15',30:'estoque_inicial_30',60:'estoque_inicial_60'}.get(prazo)
+    if not col:
         return 0
     row = conn.execute(f"SELECT {col} FROM maquinas WHERE sap = ?", (sap,)).fetchone()
-    if row is None:
+    if not row:
         return 0
     inicial = row[0] or 0
     usado = conn.execute("""
-        SELECT COALESCE(SUM(quantidade), 0)
-        FROM pedidos
-        WHERE sap = ? AND prazo = ? AND status = 'ACEITO'
-    """, (sap, prazo)).fetchone()[0]
+        SELECT COALESCE(SUM(quantidade),0)
+        FROM pedidos WHERE sap=? AND prazo=? AND status='ACEITO'
+    """,(sap,prazo)).fetchone()[0]
     return max(0, inicial - usado)
 
 def modelo_por_sap(conn, sap):
-    row = conn.execute("SELECT modelo FROM maquinas WHERE sap = ?", (sap,)).fetchone()
-    return row['modelo'] if row else ''
+    r = conn.execute("SELECT modelo FROM maquinas WHERE sap=?", (sap,)).fetchone()
+    return r['modelo'] if r else ''
 
 def gerar_id_pedido():
-    ts = datetime.now().strftime('%Y%m%d-%H%M%S')
-    rnd = f"{random.randint(0, 999):03d}"
-    return f"PED-{ts}-{rnd}"
+    return f"PED-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{random.randint(0,999):03d}"
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXT
-
-def pedido_to_dict(pedido_row):
-    return dict(pedido_row) if pedido_row else {}
+    return '.' in filename and filename.rsplit('.',1)[1].lower() in ALLOWED_EXT
 
 # ---------------- CONTEXT ----------------
 @app.context_processor
 def inject_admin():
     return {'admin_logado': session.get('admin_email')}
 
-# ---------------- ROTAS ----------------
+# ---------------- HOME ----------------
 @app.route('/')
 def index():
     conn = db()
-    maquinas = conn.execute("SELECT * FROM maquinas ORDER BY modelo").fetchall()
+    maquinas = conn.execute("SELECT * FROM maquinas").fetchall()
 
     linhas = []
     for m in maquinas:
-        d15 = estoque_disponivel(conn, m['sap'], 15)
-        d30 = estoque_disponivel(conn, m['sap'], 30)
-        d60 = estoque_disponivel(conn, m['sap'], 60)
+        d15 = estoque_disponivel(conn,m['sap'],15)
+        d30 = estoque_disponivel(conn,m['sap'],30)
+        d60 = estoque_disponivel(conn,m['sap'],60)
 
         linhas.append({
-            'modelo': m['modelo'],
-            'sap': m['sap'],
-            'd15': d15,
-            'd30': d30,
-            'd60': d60,
-            'total': d15 + d30 + d60
+            'modelo':m['modelo'],
+            'sap':m['sap'],
+            'd15':d15,
+            'd30':d30,
+            'd60':d60,
+            'total':d15+d30+d60
         })
 
     dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
     conn.close()
 
-    return render_template('index.html', linhas=linhas, dealers=dealers)
+    return render_template('index.html',linhas=linhas,dealers=dealers)
+
+# ---------------- API ----------------
+@app.route('/api/estoque')
+def api_estoque():
+    sap = request.args.get('sap')
+    conn = db()
+    resp = {
+        '15':estoque_disponivel(conn,sap,15),
+        '30':estoque_disponivel(conn,sap,30),
+        '60':estoque_disponivel(conn,sap,60),
+    }
+    conn.close()
+    return jsonify(resp)
+
+# ---------------- NOVO PEDIDO ----------------
+@app.route('/pedido/novo', methods=['GET','POST'])
+def novo_pedido():
+    conn = db()
+    dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
+    maquinas = conn.execute("SELECT modelo,sap FROM maquinas").fetchall()
+
+    if request.method=='POST':
+        dealer = request.form.get('dealer')
+        funcionario = request.form.get('funcionario')
+        sap = request.form.get('sap')
+        quantidade = int(request.form.get('quantidade'))
+        prazo = int(request.form.get('prazo'))
+        file = request.files.get('assinatura')
+
+        if not allowed_file(file.filename):
+            flash('Arquivo inválido','error')
+            return redirect(url_for('novo_pedido'))
+
+        id_pedido = gerar_id_pedido()
+        filename = secure_filename(f"{id_pedido}.png")
+        file.save(os.path.join(UPLOAD_DIR,filename))
+
+        conn.execute("""
+            INSERT INTO pedidos
+            (id,data_hora,dealer,funcionario,modelo,sap,quantidade,prazo,anexo_filename,status)
+            VALUES (?,?,?,?,?,?,?,?,?,'ACEITO')
+        """,(id_pedido,datetime.now(),dealer,funcionario,modelo_por_sap(conn,sap),sap,quantidade,prazo,filename))
+        conn.commit()
+
+        conn.close()
+        return redirect(url_for('sucesso', id_pedido=id_pedido))
+
+    conn.close()
+    return render_template('novo_pedido.html',dealers=dealers,maquinas=maquinas)
+
+# ---------------- SUCESSO ----------------
+@app.route('/pedido/sucesso/<id_pedido>')
+def sucesso(id_pedido):
+    conn = db()
+    p = conn.execute("SELECT * FROM pedidos WHERE id=?", (id_pedido,)).fetchone()
+    conn.close()
+    if not p:
+        abort(404)
+    return render_template('sucesso.html',pedido=p)
 
 # ---------------- LOGIN ----------------
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login', methods=['GET','POST'])
 def login():
-    if session.get('admin_email'):
-        return redirect(url_for('listar_pedidos'))
-
-    if request.method == 'POST':
+    if request.method=='POST':
         ip = _cliente_ip()
 
         if login_bloqueado(ip):
-            flash('Muitas tentativas. Aguarde 5 minutos.', 'error')
+            flash('Bloqueado temporariamente','error')
             return render_template('login.html')
 
-        email = (request.form.get('email') or '').lower()
-        senha = request.form.get('senha') or ''
+        email = request.form.get('email')
+        senha = request.form.get('senha')
 
-        if verificar_credenciais(email, senha):
-            registrar_tentativa(ip, True)
-            session.permanent = True
-            session['admin_email'] = email
-
-            flash('Login realizado com sucesso!', 'success')
+        if verificar_credenciais(email,senha):
+            session['admin_email']=email
+            registrar_tentativa(ip,True)
             return redirect(url_for('listar_pedidos'))
-        else:
-            registrar_tentativa(ip, False)
-            flash('Email ou senha incorretos.', 'error')
+
+        registrar_tentativa(ip,False)
+        flash('Login inválido','error')
 
     return render_template('login.html')
 
 # ---------------- LOGOUT ----------------
-@app.route('/logout', methods=['POST'])
+@app.route('/logout')
 def logout():
     session.clear()
-    flash('Logout realizado.', 'success')
     return redirect(url_for('index'))
 
-# ---------------- PEDIDOS ----------------
+# ---------------- ADMIN ----------------
 @app.route('/pedidos')
 @admin_required
 def listar_pedidos():
     conn = db()
     pedidos = conn.execute("SELECT * FROM pedidos ORDER BY data_hora DESC").fetchall()
     conn.close()
-    return render_template('pedidos.html', pedidos=pedidos)
+    return render_template('pedidos.html',pedidos=pedidos)
+
+@app.route('/uploads/<path:filename>')
+@admin_required
+def download(filename):
+    return send_from_directory(UPLOAD_DIR,filename)
 
 # ---------------- RUN ----------------
 if __name__ == '__main__':
