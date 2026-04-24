@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Histórico de Pedidos - Agrishow{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div>
+    <h1>Histórico de Pedidos</h1>
+    <p class="hero-sub">{{ pedidos|length }} pedido(s) registrado(s).</p>
+  </div>
+  <a href="{{ url_for('novo_pedido') }}" class="btn btn-primary">+ Novo Pedido</a>
+</section>
+
+<div class="card">
+  <div class="table-wrap">
+    <table class="tabela">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Data/Hora</th>
+          <th>Dealer</th>
+          <th>Funcionário</th>
+          <th>Máquina</th>
+          <th class="center">Qtd</th>
+          <th class="center">Prazo</th>
+          <th class="center">Anexo</th>
+          <th class="center">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pedidos %}
+        <tr>
+          <td class="mono"><strong>{{ p.id }}</strong></td>
+          <td>{{ p.data_hora.replace('T', ' ') }}</td>
+          <td>{{ p.dealer }}</td>
+          <td>{{ p.funcionario }}</td>
+          <td>{{ p.modelo }} <span class="muted mono">— {{ p.sap }}</span></td>
+          <td class="center">{{ p.quantidade }}</td>
+          <td class="center">{{ p.prazo }} d</td>
+          <td class="center"><a href="{{ url_for('download_anexo', filename=p.anexo_filename) }}" target="_blank">📎</a></td>
+          <td class="center"><span class="badge-ok">{{ p.status }}</span></td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" class="empty">Nenhum pedido registrado ainda.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
