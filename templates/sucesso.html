@@ -20,7 +20,7 @@
     <div class="det-row"><span class="det-label">Quantidade</span><span>{{ pedido.quantidade }}</span></div>
     <div class="det-row"><span class="det-label">Prazo</span><span>{{ pedido.prazo }} dias</span></div>
     <div class="det-row"><span class="det-label">Assinatura</span>
-      <a href="{{ url_for('download_anexo', filename=pedido.anexo_filename) }}" target="_blank">📎 Ver anexo</a>
+      <a href="{{ url_for('download', filename=pedido.anexo_filename) }}" target="_blank">📎 Ver anexo</a>
     </div>
   </div>
 
