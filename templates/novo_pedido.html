@@ -59,15 +59,15 @@
     <div id="estoque-info" class="estoque-info hidden">
       <div class="estoque-titulo">Estoque disponível para <span id="ei-modelo">—</span></div>
       <div class="estoque-bars">
-        <div class="estoque-bar">
+        <div class="estoque-bar" data-prazo="15">
           <span class="ei-label">15 dias</span>
           <span class="ei-value" id="ei-15">—</span>
         </div>
-        <div class="estoque-bar">
+        <div class="estoque-bar" data-prazo="30">
           <span class="ei-label">30 dias</span>
           <span class="ei-value" id="ei-30">—</span>
         </div>
-        <div class="estoque-bar">
+        <div class="estoque-bar" data-prazo="60">
           <span class="ei-label">60 dias</span>
           <span class="ei-value" id="ei-60">—</span>
         </div>
@@ -113,33 +113,21 @@
 
   async function carregarEstoque() {
     const sap = sapSel.value;
-    if (!sap) {
-      info.classList.add('hidden');
-      estoqueAtual = {};
-      return;
-    }
-    try {
-      const resp = await fetch(`/api/estoque?sap=${encodeURIComponent(sap)}`);
-      if (!resp.ok) {
-        info.classList.add('hidden');
-        return;
-      }
-      const data = await resp.json();
-      estoqueAtual = data.disponivel;
-      eiModelo.textContent = `${data.modelo} (${data.sap})`;
-      ei15.textContent = data.disponivel['15'];
-      ei30.textContent = data.disponivel['30'];
-      ei60.textContent = data.disponivel['60'];
-      [ei15, ei30, ei60].forEach(e => {
-        const v = parseInt(e.textContent, 10);
-        e.classList.toggle('zero', v === 0);
-      });
-      info.classList.remove('hidden');
-      validarQuantidade();
-    } catch (err) {
-      console.error('Erro ao carregar estoque:', err);
-      info.classList.add('hidden');
-    }
+    if (!sap) { info.classList.add('hidden'); return; }
+    const resp = await fetch(`/api/estoque?sap=${encodeURIComponent(sap)}`);
+    if (!resp.ok) { info.classList.add('hidden'); return; }
+    const data = await resp.json();
+    estoqueAtual = data.disponivel;
+    eiModelo.textContent = `${data.modelo} (${data.sap})`;
+    ei15.textContent = data.disponivel['15'];
+    ei30.textContent = data.disponivel['30'];
+    ei60.textContent = data.disponivel['60'];
+    [ei15, ei30, ei60].forEach(e => {
+      const v = parseInt(e.textContent, 10);
+      e.classList.toggle('zero', v === 0);
+    });
+    info.classList.remove('hidden');
+    validarQuantidade();
   }
 
   function validarQuantidade() {
