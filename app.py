@@ -8,6 +8,10 @@ from flask import (Flask, render_template, request, jsonify, session,
                    send_from_directory, redirect, url_for, flash, abort)
 from werkzeug.utils import secure_filename
 
+# 🔴 EMAIL
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'data', 'agrishow.db')
 UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads')
@@ -24,12 +28,34 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=SESSION_HOURS)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
-if True:
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
-
+# 🔴 RECRIA BANCO (APENAS PARA TESTE)
+if not os.path.exists(DB_PATH):
     import init_db
     init_db.main()
+
+# ---------------- EMAIL ----------------
+def enviar_email(assunto, conteudo):
+    try:
+        api_key = os.environ.get("SENDGRID_API_KEY")
+        remetente = os.environ.get("EMAIL_FROM")
+        destinatarios = get_admin_emails()
+
+        if not api_key or not remetente or not destinatarios:
+            print("⚠️ Email não configurado")
+            return
+
+        message = Mail(
+            from_email=remetente,
+            to_emails=destinatarios,
+            subject=assunto,
+            html_content=conteudo
+        )
+
+        sg = SendGridAPIClient(api_key)
+        sg.send(message)
+
+    except Exception as e:
+        print("Erro ao enviar email:", e)
 
 # ---------------- ADMINS ----------------
 def get_admin_emails():
@@ -118,10 +144,7 @@ def index():
     maquinas = conn.execute("SELECT modelo, sap FROM maquinas").fetchall()
 
     linhas = []
-
-    total_15 = 0
-    total_30 = 0
-    total_60 = 0
+    total_15 = total_30 = total_60 = 0
 
     for m in maquinas:
         d15 = estoque_disponivel(conn, m['sap'], 15)
@@ -142,7 +165,6 @@ def index():
         })
 
     dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
-
     conn.close()
 
     return render_template(
@@ -154,43 +176,6 @@ def index():
         total_60=total_60,
         total_geral=total_15 + total_30 + total_60
     )
-
-    dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
-
-    conn.close()
-    return render_template('index.html', linhas=linhas, dealers=dealers)
-
-# ---------------- API ----------------
-@app.route('/api/estoque')
-def api_estoque():
-    sap = request.args.get('sap')
-
-    if not sap:
-        return jsonify({'error': 'sap obrigatório'}), 400
-
-    conn = db()
-
-    maquina = conn.execute(
-        "SELECT modelo FROM maquinas WHERE sap = ?",
-        (sap,)
-    ).fetchone()
-
-    if not maquina:
-        conn.close()
-        return jsonify({'error': 'SAP não encontrado'}), 404
-
-    resp = {
-        'modelo': maquina['modelo'],
-        'sap': sap,
-        'disponivel': {
-            '15': estoque_disponivel(conn, sap, 15),
-            '30': estoque_disponivel(conn, sap, 30),
-            '60': estoque_disponivel(conn, sap, 60),
-        }
-    }
-
-    conn.close()
-    return jsonify(resp)
 
 # ---------------- NOVO PEDIDO ----------------
 @app.route('/pedido/novo', methods=['GET','POST'])
@@ -204,27 +189,16 @@ def novo_pedido():
         dealer = request.form.get('dealer')
         funcionario = request.form.get('funcionario')
         sap = request.form.get('sap')
+        quantidade = int(request.form.get('quantidade') or 0)
+        prazo = int(request.form.get('prazo') or 0)
 
-        try:
-            quantidade = int(request.form.get('quantidade') or 0)
-            prazo = int(request.form.get('prazo') or 0)
-        except ValueError:
-            flash('Quantidade ou prazo inválidos', 'error')
+        if quantidade > estoque_disponivel(conn, sap, prazo):
+            flash('Estoque insuficiente', 'error')
             return redirect(url_for('novo_pedido'))
 
         file = request.files.get('assinatura')
-
-        if not file or file.filename == '':
-            flash('Anexo obrigatório', 'error')
-            return redirect(url_for('novo_pedido'))
-
-        if not allowed_file(file.filename):
+        if not file or not allowed_file(file.filename):
             flash('Arquivo inválido', 'error')
-            return redirect(url_for('novo_pedido'))
-
-        # 🔴 valida estoque
-        if quantidade > estoque_disponivel(conn, sap, prazo):
-            flash('Estoque insuficiente', 'error')
             return redirect(url_for('novo_pedido'))
 
         id_pedido = gerar_id_pedido()
@@ -244,51 +218,16 @@ def novo_pedido():
         conn.commit()
         conn.close()
 
+        # 🔴 EMAIL CRIAÇÃO
+        enviar_email(
+            "Novo Pedido Criado",
+            f"<b>Pedido:</b> {id_pedido}<br>Dealer: {dealer}<br>Qtd: {quantidade}"
+        )
+
         return redirect(url_for('sucesso', id_pedido=id_pedido))
 
     conn.close()
     return render_template('novo_pedido.html', dealers=dealers, maquinas=maquinas)
-
-# ---------------- SUCESSO ----------------
-@app.route('/pedido/sucesso/<id_pedido>')
-def sucesso(id_pedido):
-    conn = db()
-    p = conn.execute("SELECT * FROM pedidos WHERE id=?", (id_pedido,)).fetchone()
-    conn.close()
-
-    if not p:
-        abort(404)
-
-    return render_template('sucesso.html', pedido=p)
-
-# ---------------- LOGIN ----------------
-@app.route('/login', methods=['GET','POST'])
-def login():
-    if request.method == 'POST':
-        ip = _cliente_ip()
-
-        if login_bloqueado(ip):
-            flash('Muitas tentativas. Aguarde.', 'error')
-            return render_template('login.html')
-
-        email = request.form.get('email')
-        senha = request.form.get('senha')
-
-        if verificar_credenciais(email, senha):
-            session['admin_email'] = email
-            registrar_tentativa(ip, True)
-            return redirect(url_for('listar_pedidos'))
-
-        registrar_tentativa(ip, False)
-        flash('Login inválido', 'error')
-
-    return render_template('login.html')
-
-# ---------------- LOGOUT ----------------
-@app.route('/logout', methods=['POST'])
-def logout():
-    session.clear()
-    return redirect(url_for('index'))
 
 # ---------------- CANCELAR ----------------
 @app.route('/pedido/cancelar/<id_pedido>', methods=['POST'])
@@ -296,27 +235,16 @@ def logout():
 def cancelar_pedido(id_pedido):
     conn = db()
 
-    pedido = conn.execute("SELECT * FROM pedidos WHERE id=?", (id_pedido,)).fetchone()
-
-    if not pedido:
-        conn.close()
-        abort(404)
-
-    if pedido['status'] == 'CANCELADO':
-        conn.close()
-        flash('Pedido já cancelado', 'error')
-        return redirect(url_for('listar_pedidos'))
-
-    conn.execute("""
-        UPDATE pedidos
-        SET status = 'CANCELADO'
-        WHERE id = ?
-    """, (id_pedido,))
-
+    conn.execute("UPDATE pedidos SET status='CANCELADO' WHERE id=?", (id_pedido,))
     conn.commit()
     conn.close()
 
-    flash(f'Pedido {id_pedido} cancelado', 'success')
+    # 🔴 EMAIL CANCELAMENTO
+    enviar_email(
+        "Pedido Cancelado",
+        f"<b>Pedido cancelado:</b> {id_pedido}"
+    )
+
     return redirect(url_for('listar_pedidos'))
 
 # ---------------- ADMIN ----------------
@@ -334,13 +262,26 @@ def listar_pedidos():
 def download(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
-# ---------------- RELOAD DB ----------------
-@app.route('/admin/reload-db')
-@admin_required
-def reload_db():
-    import init_db
-    init_db.main()
-    return "Banco atualizado com sucesso"
+# ---------------- LOGIN ----------------
+@app.route('/login', methods=['GET','POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        senha = request.form.get('senha')
+
+        if verificar_credenciais(email, senha):
+            session['admin_email'] = email
+            return redirect(url_for('listar_pedidos'))
+
+        flash('Login inválido', 'error')
+
+    return render_template('login.html')
+
+# ---------------- LOGOUT ----------------
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return redirect(url_for('index'))
 
 # ---------------- RUN ----------------
 if __name__ == '__main__':
