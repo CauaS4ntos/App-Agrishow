@@ -117,7 +117,21 @@ def inject_admin():
 @app.route('/')
 def index():
     conn = db()
-    maquinas = conn.execute("SELECT * FROM maquinas").fetchall()
+    maquinas_raw = conn.execute("SELECT modelo, sap FROM maquinas").fetchall()
+
+maquinas = []
+for m in maquinas_raw:
+    d15 = estoque_disponivel(conn, m['sap'], 15)
+    d30 = estoque_disponivel(conn, m['sap'], 30)
+    d60 = estoque_disponivel(conn, m['sap'], 60)
+
+    maquinas.append({
+        'modelo': m['modelo'],
+        'sap': m['sap'],
+        'd15': d15,
+        'd30': d30,
+        'd60': d60,
+    })
 
     linhas = []
     for m in maquinas:
