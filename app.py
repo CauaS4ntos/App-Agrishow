@@ -228,6 +228,23 @@ def novo_pedido():
     conn.close()
     return render_template('novo_pedido.html', dealers=dealers, maquinas=maquinas)
 
+# ================= CANCELAR PEDIDO =================
+@app.route('/pedido/cancelar/<id_pedido>', methods=['POST'])
+@admin_required
+def cancelar_pedido(id_pedido):
+    conn = db()
+
+    conn.execute(
+        "UPDATE pedidos SET status='CANCELADO' WHERE id=?",
+        (id_pedido,)
+    )
+
+    conn.commit()
+    conn.close()
+
+    flash('Pedido cancelado com sucesso', 'success')
+    return redirect(url_for('listar_pedidos'))
+
 # ================= ADMIN =================
 @app.route('/pedidos')
 @admin_required
