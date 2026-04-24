@@ -10,6 +10,21 @@
   <a href="{{ url_for('novo_pedido') }}" class="btn btn-primary">+ Novo Pedido</a>
 </section>
 
+<div class="stats">
+  <div class="stat-card stat-15">
+    <div class="stat-label">Pedidos aceitos</div>
+    <div class="stat-value">{{ total_aceitos }}</div>
+  </div>
+  <div class="stat-card stat-cancelado">
+    <div class="stat-label">Pedidos cancelados</div>
+    <div class="stat-value">{{ total_cancelados }}</div>
+  </div>
+  <div class="stat-card stat-total">
+    <div class="stat-label">Total registrado</div>
+    <div class="stat-value">{{ pedidos|length }}</div>
+  </div>
+</div>
+
 <div class="card">
   <div class="table-wrap">
     <table class="tabela">
@@ -24,6 +39,7 @@
           <th class="center">Prazo</th>
           <th class="center">Anexo</th>
           <th class="center">Status</th>
+          <th>Auditoria</th>
           <th class="center">Ações</th>
         </tr>
       </thead>
@@ -47,12 +63,25 @@
               <span class="badge-cancelado">CANCELADO</span>
             {% endif %}
           </td>
+          <td class="audit-cell">
+            {% if p.status == 'CANCELADO' and p.cancelado_por %}
+              <div class="audit-info">
+                <span class="audit-label">por</span>
+                <span class="audit-value">{{ p.cancelado_por }}</span>
+              </div>
+              {% if p.cancelado_em %}
+                <div class="audit-date">{{ p.cancelado_em.replace('T', ' ') }}</div>
+              {% endif %}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
           <td class="center">
             {% if p.status == 'ACEITO' %}
               <form method="POST"
                     action="{{ url_for('cancelar_pedido', id_pedido=p.id) }}"
                     style="display:inline; margin:0;"
-                    onsubmit="return confirm('Tem certeza que deseja cancelar o pedido {{ p.id }}? Esta ação não pode ser desfeita.');">
+                    onsubmit="return confirm('Tem certeza que deseja cancelar o pedido {{ p.id }}?\n\nEsta ação não pode ser desfeita e o estoque será liberado.');">
                 <button type="submit" class="btn btn-sm btn-danger">Cancelar</button>
               </form>
             {% else %}
@@ -62,7 +91,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="10" class="empty">Nenhum pedido registrado ainda.</td>
+          <td colspan="11" class="empty">Nenhum pedido registrado ainda.</td>
         </tr>
         {% endfor %}
       </tbody>
