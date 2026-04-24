@@ -95,7 +95,7 @@ def popular_maquinas(conn):
         ]
         c = conn.cursor()
         for m in exemplos:
-            c.execute("""INSERT OR IGNORE INTO maquinas
+            c.execute("""INSERT INTO maquinas (modelo, sap, estoque_inicial_15, estoque_inicial_30, estoque_inicial_60) VALUES (?, ?, ?, ?, ?) ON CONFLICT(sap) DO UPDATE SET     modelo=excluded.modelo,     estoque_inicial_15=excluded.estoque_inicial_15,     estoque_inicial_30=excluded.estoque_inicial_30,     estoque_inicial_60=excluded.estoque_inicial_60
                          (modelo, sap, estoque_inicial_15, estoque_inicial_30, estoque_inicial_60)
                          VALUES (?,?,?,?,?)""", m)
         conn.commit()
@@ -111,7 +111,7 @@ def popular_maquinas(conn):
         e15 = row[2] if row[2] is not None else 0
         e30 = row[3] if row[3] is not None else 0
         e60 = row[4] if row[4] is not None else 0
-        c.execute("""INSERT OR IGNORE INTO maquinas
+        c.execute("""INSERT INTO maquinas (modelo, sap, estoque_inicial_15, estoque_inicial_30, estoque_inicial_60) VALUES (?, ?, ?, ?, ?) ON CONFLICT(sap) DO UPDATE SET     modelo=excluded.modelo,     estoque_inicial_15=excluded.estoque_inicial_15,     estoque_inicial_30=excluded.estoque_inicial_30,     estoque_inicial_60=excluded.estoque_inicial_60
                      (modelo, sap, estoque_inicial_15, estoque_inicial_30, estoque_inicial_60)
                      VALUES (?,?,?,?,?)""", (modelo, sap, int(e15), int(e30), int(e60)))
     conn.commit()
