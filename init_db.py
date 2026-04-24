@@ -1,6 +1,6 @@
 """
-init_db.py — Inicializa o banco SQLite com os dados da planilha Excel.
-Lê Agrishow_Machine_Control_Sheet.xlsm e popula a tabela de máquinas.
+init_db.py - Inicializa SQLite com dados da planilha.
+Versao v3: inclui colunas de auditoria de cancelamento.
 """
 import os
 import sqlite3
@@ -43,12 +43,22 @@ def criar_schema(conn):
         quantidade INTEGER NOT NULL,
         prazo INTEGER NOT NULL CHECK(prazo IN (15, 30, 60)),
         anexo_filename TEXT NOT NULL,
-        status TEXT DEFAULT 'ACEITO'
+        status TEXT DEFAULT 'ACEITO',
+        cancelado_por TEXT,
+        cancelado_em TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_pedidos_sap ON pedidos(sap);
     CREATE INDEX IF NOT EXISTS idx_pedidos_dealer ON pedidos(dealer);
+    CREATE INDEX IF NOT EXISTS idx_pedidos_status ON pedidos(status);
     """)
+    conn.commit()
+    # Garante colunas mesmo em bancos antigos
+    for coluna, tipo in [('cancelado_por', 'TEXT'), ('cancelado_em', 'TEXT')]:
+        try:
+            c.execute(f"ALTER TABLE pedidos ADD COLUMN {coluna} {tipo}")
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
 
 
@@ -62,7 +72,6 @@ def popular_dealers(conn):
 def popular_maquinas(conn):
     if not os.path.exists(XLSX_PATH):
         print(f"AVISO: {XLSX_PATH} nao encontrado. Usando dados de exemplo.")
-        # Fallback com dados de exemplo baseados na planilha original
         exemplos = [
             ('4160D', '35F01190003B001', 0, 8, 57),
             ('6612E', '23F00700020B003', 15, 0, 0),
