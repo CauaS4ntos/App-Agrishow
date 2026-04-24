@@ -24,6 +24,7 @@
           <th class="center">Prazo</th>
           <th class="center">Anexo</th>
           <th class="center">Status</th>
+          <th class="center">Ações</th>
         </tr>
       </thead>
       <tbody>
@@ -38,10 +39,21 @@
           <td class="center">{{ p.prazo }} d</td>
           <td class="center"><a href="{{ url_for('download_anexo', filename=p.anexo_filename) }}" target="_blank">📎</a></td>
           <td class="center"><span class="badge-ok">{{ p.status }}</span></td>
+          <td class="center">
+    {% if p.status == 'ACEITO' %}
+<a href="{{ url_for('cancelar_pedido', id_pedido=p.id) }}"
+           onclick="return confirm('Tem certeza que deseja cancelar este pedido?');"
+           class="btn btn-danger">
+           Cancelar
+</a>
+    {% else %}
+<span class="badge-cancelado">Cancelado</span>
+    {% endif %}
+</td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="9" class="empty">Nenhum pedido registrado ainda.</td>
+          <td colspan="10" class="empty">Nenhum pedido registrado ainda.</td>
         </tr>
         {% endfor %}
       </tbody>
