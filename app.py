@@ -4,8 +4,9 @@ import random
 import time
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import (Flask, render_template, request, jsonify, session,
-                   send_from_directory, redirect, url_for, flash, abort)
+from flask import (
+    Flask, render_template, request, jsonify, session, send_from_directory, redirect, url_for, flash
+)
 from werkzeug.utils import secure_filename
 
 # 🔴 EMAIL
@@ -28,7 +29,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=SESSION_HOURS)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
-# 🔴 RECRIA BANCO (APENAS PARA TESTE)
+# 🔴 CRIA BANCO APENAS SE NÃO EXISTIR
 if not os.path.exists(DB_PATH):
     import init_db
     init_db.main()
@@ -62,11 +63,14 @@ def get_admin_emails():
     raw = os.environ.get('ADMIN_EMAILS', '')
     return [e.strip().lower() for e in raw.split(',') if e.strip()]
 
+
 def get_admin_password():
     return os.environ.get('ADMIN_PASSWORD', '')
 
+
 def verificar_credenciais(email, senha):
     return (email or '').lower().strip() in get_admin_emails() and senha == get_admin_password()
+
 
 def admin_required(f):
     @wraps(f)
@@ -74,27 +78,8 @@ def admin_required(f):
         if not session.get('admin_email'):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
+
     return decorated
-
-# ---------------- RATE LIMIT ----------------
-_login_attempts = {}
-MAX_FAILED = 5
-LOCK_SECONDS = 300
-
-def _cliente_ip():
-    xff = request.headers.get('X-Forwarded-For')
-    return xff.split(',')[0].strip() if xff else request.remote_addr
-
-def login_bloqueado(ip):
-    agora = time.time()
-    tentativas = _login_attempts.get(ip, [])
-    tentativas = [(t, ok) for (t, ok) in tentativas if agora - t < LOCK_SECONDS]
-    _login_attempts[ip] = tentativas
-    falhas = sum(1 for (_, ok) in tentativas if not ok)
-    return falhas >= MAX_FAILED
-
-def registrar_tentativa(ip, sucesso):
-    _login_attempts.setdefault(ip, []).append((time.time(), sucesso))
 
 # ---------------- DB ----------------
 def db():
@@ -102,8 +87,9 @@ def db():
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def estoque_disponivel(conn, sap, prazo):
-    col = {15:'estoque_inicial_15',30:'estoque_inicial_30',60:'estoque_inicial_60'}.get(prazo)
+    col = {15: 'estoque_inicial_15', 30: 'estoque_inicial_30', 60: 'estoque_inicial_60'}.get(prazo)
     if not col:
         return 0
 
@@ -117,30 +103,59 @@ def estoque_disponivel(conn, sap, prazo):
         SELECT COALESCE(SUM(quantidade),0)
         FROM pedidos
         WHERE sap=? AND prazo=? AND status='ACEITO'
-    """,(sap,prazo)).fetchone()[0]
+    """, (sap, prazo)).fetchone()[0]
 
     return max(0, inicial - usado)
+
 
 def modelo_por_sap(conn, sap):
     r = conn.execute("SELECT modelo FROM maquinas WHERE sap=?", (sap,)).fetchone()
     return r['modelo'] if r else ''
 
+
 def gerar_id_pedido():
     return f"PED-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{random.randint(0,999):03d}"
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.',1)[1].lower() in ALLOWED_EXT
 
-# ---------------- CONTEXT ----------------
-@app.context_processor
-def inject_admin():
-    return {'admin_logado': session.get('admin_email')}
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXT
+
+# ---------------- API ESTOQUE (NOVO) ----------------
+@app.route('/api/estoque')
+def api_estoque():
+    sap = request.args.get('sap')
+
+    if not sap:
+        return jsonify({'error': 'sap obrigatório'}), 400
+
+    conn = db()
+
+    maquina = conn.execute(
+        "SELECT modelo FROM maquinas WHERE sap = ?",
+        (sap,)
+    ).fetchone()
+
+    if not maquina:
+        conn.close()
+        return jsonify({'error': 'SAP não encontrado'}), 404
+
+    resp = {
+        'modelo': maquina['modelo'],
+        'sap': sap,
+        'disponivel': {
+            '15': estoque_disponivel(conn, sap, 15),
+            '30': estoque_disponivel(conn, sap, 30),
+            '60': estoque_disponivel(conn, sap, 60),
+        }
+    }
+
+    conn.close()
+    return jsonify(resp)
 
 # ---------------- HOME ----------------
 @app.route('/')
 def index():
     conn = db()
-
     maquinas = conn.execute("SELECT modelo, sap FROM maquinas").fetchall()
 
     linhas = []
@@ -165,6 +180,7 @@ def index():
         })
 
     dealers = [r['nome'] for r in conn.execute("SELECT nome FROM dealers").fetchall()]
+
     conn.close()
 
     return render_template(
@@ -178,7 +194,7 @@ def index():
     )
 
 # ---------------- NOVO PEDIDO ----------------
-@app.route('/pedido/novo', methods=['GET','POST'])
+@app.route('/pedido/novo', methods=['GET', 'POST'])
 def novo_pedido():
     conn = db()
 
@@ -202,23 +218,30 @@ def novo_pedido():
             return redirect(url_for('novo_pedido'))
 
         id_pedido = gerar_id_pedido()
-        ext = file.filename.rsplit('.',1)[1].lower()
+        ext = file.filename.rsplit('.', 1)[1].lower()
         filename = secure_filename(f"{id_pedido}.{ext}")
+
         file.save(os.path.join(UPLOAD_DIR, filename))
 
         conn.execute("""
             INSERT INTO pedidos
             (id,data_hora,dealer,funcionario,modelo,sap,quantidade,prazo,anexo_filename,status)
             VALUES (?,?,?,?,?,?,?,?,?,'ACEITO')
-        """,(id_pedido, datetime.now().isoformat(),
-             dealer, funcionario,
-             modelo_por_sap(conn, sap), sap,
-             quantidade, prazo, filename))
+        """, (
+            id_pedido,
+            datetime.now().isoformat(),
+            dealer,
+            funcionario,
+            modelo_por_sap(conn, sap),
+            sap,
+            quantidade,
+            prazo,
+            filename
+        ))
 
         conn.commit()
         conn.close()
 
-        # 🔴 EMAIL CRIAÇÃO
         enviar_email(
             "Novo Pedido Criado",
             f"<b>Pedido:</b> {id_pedido}<br>Dealer: {dealer}<br>Qtd: {quantidade}"
@@ -228,60 +251,6 @@ def novo_pedido():
 
     conn.close()
     return render_template('novo_pedido.html', dealers=dealers, maquinas=maquinas)
-
-# ---------------- CANCELAR ----------------
-@app.route('/pedido/cancelar/<id_pedido>', methods=['POST'])
-@admin_required
-def cancelar_pedido(id_pedido):
-    conn = db()
-
-    conn.execute("UPDATE pedidos SET status='CANCELADO' WHERE id=?", (id_pedido,))
-    conn.commit()
-    conn.close()
-
-    # 🔴 EMAIL CANCELAMENTO
-    enviar_email(
-        "Pedido Cancelado",
-        f"<b>Pedido cancelado:</b> {id_pedido}"
-    )
-
-    return redirect(url_for('listar_pedidos'))
-
-# ---------------- ADMIN ----------------
-@app.route('/pedidos')
-@admin_required
-def listar_pedidos():
-    conn = db()
-    pedidos = conn.execute("SELECT * FROM pedidos ORDER BY data_hora DESC").fetchall()
-    conn.close()
-    return render_template('pedidos.html', pedidos=pedidos)
-
-# ---------------- DOWNLOAD ----------------
-@app.route('/uploads/<path:filename>')
-@admin_required
-def download(filename):
-    return send_from_directory(UPLOAD_DIR, filename)
-
-# ---------------- LOGIN ----------------
-@app.route('/login', methods=['GET','POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        senha = request.form.get('senha')
-
-        if verificar_credenciais(email, senha):
-            session['admin_email'] = email
-            return redirect(url_for('listar_pedidos'))
-
-        flash('Login inválido', 'error')
-
-    return render_template('login.html')
-
-# ---------------- LOGOUT ----------------
-@app.route('/logout', methods=['POST'])
-def logout():
-    session.clear()
-    return redirect(url_for('index'))
 
 # ---------------- RUN ----------------
 if __name__ == '__main__':
