@@ -4,3 +4,5 @@ Werkzeug>=3.0
 gunicorn>=21.2
 qrcode[pil]>=7.4
 sendgrid
+psycopg2-binary
+python-dotenv
