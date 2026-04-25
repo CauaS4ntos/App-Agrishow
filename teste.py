@@ -1,0 +1,1 @@
+import psycopg2; conn = psycopg2.connect(host="db.ulyuyopzcgzfehnmxhqb.supabase.co", port=5432, dbname="postgres", user="postgres", password="Agrishow2024", sslmode="require"); print("Conectado!"); conn.close()

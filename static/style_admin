@@ -1,0 +1,135 @@
+/* ============== ADMIN & LOGIN (adicionar ao final do style.css) ============== */
+
+.nav-divider {
+  color: rgba(255,255,255,0.3);
+  margin: 0 4px;
+}
+.nav-admin-info {
+  color: rgba(255,255,255,0.9);
+  font-size: 13px;
+  padding: 8px 12px;
+}
+.nav-logout-btn {
+  background: rgba(255,255,255,0.15);
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.nav-logout-btn:hover {
+  background: rgba(255,255,255,0.25);
+}
+.nav-admin-link {
+  background: rgba(255,255,255,0.1);
+}
+
+/* Login page */
+.login-wrap {
+  max-width: 460px;
+  margin: 40px auto;
+  text-align: center;
+}
+.login-card {
+  background: white;
+  border-radius: 16px;
+  padding: 40px 32px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  text-align: left;
+}
+.login-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.login-icon {
+  font-size: 40px;
+  margin-bottom: 8px;
+}
+.login-header h1 {
+  font-size: 24px;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+.login-sub {
+  color: #64748b;
+  font-size: 14px;
+  margin: 0;
+}
+.login-card .form-field {
+  margin-bottom: 16px;
+}
+.form-actions-login {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+  justify-content: space-between;
+}
+.form-actions-login .btn-lg {
+  flex: 1;
+}
+.login-footer {
+  color: #94a3b8;
+  font-size: 12px;
+  margin-top: 20px;
+  text-align: center;
+}
+
+/* Botão e status cancelado */
+.btn-danger {
+  background: #dc2626;
+  color: white;
+}
+.btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+.badge-cancelado {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.row-cancelado {
+  background: #fafafa;
+}
+.row-cancelado td {
+  color: #94a3b8;
+}
+.row-cancelado td strong {
+  color: #94a3b8;
+}
+
+.stat-cancelado {
+  border-color: #dc2626;
+}
+
+/* Coluna de auditoria */
+.audit-cell {
+  font-size: 12px;
+}
+.audit-info {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+}
+.audit-label {
+  color: #94a3b8;
+}
+.audit-value {
+  color: #334155;
+  font-weight: 600;
+  word-break: break-all;
+}
+.audit-date {
+  color: #94a3b8;
+  font-size: 11px;
+  margin-top: 2px;
+}
