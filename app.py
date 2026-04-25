@@ -76,6 +76,7 @@ def deletar_arquivo(filename: str):
 
 # ================= DB HELPERS =================
 def estoque_disponivel(conn, sap, prazo):
+    """Calcula estoque disponível para um único SAP/prazo (usado no POST do pedido)."""
     col = {15: 'estoque_inicial_15', 30: 'estoque_inicial_30', 60: 'estoque_inicial_60'}.get(prazo)
     if not col:
         return 0
@@ -92,6 +93,54 @@ def estoque_disponivel(conn, sap, prazo):
     """, (sap, prazo))
     usado = cur.fetchone()['usado']
     return max(0, inicial - usado)
+
+def estoque_todos(conn):
+    """
+    Retorna estoque disponível de todas as máquinas em apenas 2 queries.
+    Query 1: busca estoque inicial de todas as máquinas.
+    Query 2: soma pedidos ACEITOS agrupados por SAP e prazo.
+    """
+    cur = conn.cursor()
+
+    # Query 1 — estoque inicial de todas as máquinas
+    cur.execute("""
+        SELECT modelo, sap,
+               estoque_inicial_15, estoque_inicial_30, estoque_inicial_60
+        FROM maquinas
+        ORDER BY modelo
+    """)
+    maquinas = cur.fetchall()
+
+    # Query 2 — pedidos aceitos agrupados
+    cur.execute("""
+        SELECT sap, prazo, COALESCE(SUM(quantidade), 0) AS usado
+        FROM pedidos
+        WHERE status='ACEITO'
+        GROUP BY sap, prazo
+    """)
+    usados = {}
+    for row in cur.fetchall():
+        usados[(row['sap'], row['prazo'])] = int(row['usado'])
+
+    # Calcula disponível subtraindo pedidos do estoque inicial
+    linhas = []
+    total_15 = total_30 = total_60 = 0
+
+    for m in maquinas:
+        d15 = max(0, (m['estoque_inicial_15'] or 0) - usados.get((m['sap'], 15), 0))
+        d30 = max(0, (m['estoque_inicial_30'] or 0) - usados.get((m['sap'], 30), 0))
+        d60 = max(0, (m['estoque_inicial_60'] or 0) - usados.get((m['sap'], 60), 0))
+        total_15 += d15
+        total_30 += d30
+        total_60 += d60
+        linhas.append({
+            'modelo': m['modelo'],
+            'sap': m['sap'],
+            'd15': d15, 'd30': d30, 'd60': d60,
+            'total': d15 + d30 + d60
+        })
+
+    return linhas, total_15, total_30, total_60
 
 def modelo_por_sap(conn, sap):
     cur = conn.cursor()
@@ -169,25 +218,9 @@ def index():
     try:
         conn = db()
         cur = conn.cursor()
-        cur.execute("SELECT modelo, sap FROM maquinas ORDER BY modelo")
-        maquinas = cur.fetchall()
 
-        linhas = []
-        total_15 = total_30 = total_60 = 0
-
-        for m in maquinas:
-            d15 = estoque_disponivel(conn, m['sap'], 15)
-            d30 = estoque_disponivel(conn, m['sap'], 30)
-            d60 = estoque_disponivel(conn, m['sap'], 60)
-            total_15 += d15
-            total_30 += d30
-            total_60 += d60
-            linhas.append({
-                'modelo': m['modelo'],
-                'sap': m['sap'],
-                'd15': d15, 'd30': d30, 'd60': d60,
-                'total': d15 + d30 + d60
-            })
+        # Apenas 2 queries para calcular todo o estoque
+        linhas, total_15, total_30, total_60 = estoque_todos(conn)
 
         cur.execute("SELECT nome FROM dealers ORDER BY nome")
         dealers = [r['nome'] for r in cur.fetchall()]
